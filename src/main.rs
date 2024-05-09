@@ -1,7 +1,4 @@
-use std::{
-    io::{prelude::*, BufReader},
-    net::{TcpListener, TcpStream},
-};
+use std::{io::{prelude::*, BufReader}, net::{TcpListener, TcpStream}, thread};
 // Uncomment this block to pass the first stage
 
 fn main() {
@@ -15,7 +12,9 @@ fn main() {
     for stream in listener.incoming() {
         match stream {
             Ok( stream) => {
-                 handle_client(stream);
+                thread::spawn(||{
+                    handle_client(stream);
+                });
             }
             Err(e) => {
                 println!("error: {}", e);
