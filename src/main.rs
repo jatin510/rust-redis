@@ -1,10 +1,34 @@
+use std::collections::HashMap;
 use std::str::from_utf8;
+use std::sync::{Arc, Mutex};
 use std::{
     io::{prelude::*, BufReader},
     net::{TcpListener, TcpStream},
     thread,
 };
 // Uncomment this block to pass the first stage
+
+pub struct Storage {
+    data: Arc<Mutex<HashMap<String, String>>>,
+}
+
+impl Storage {
+    pub fn new() -> Self {
+        Storage {
+            data: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    pub fn get(&self, key: &str) -> Option<String> {
+        let data = self.data.lock().unwrap();
+        data.get(key).cloned()
+    }
+
+    pub fn set(&self, key: String, value: String) {
+        let mut data = self.data.lock().unwrap();
+        data.insert(key, value);
+    }
+}
 
 fn main() {
     // You can use print statements as follows for debugging, they'll be visible when running tests.
@@ -13,12 +37,14 @@ fn main() {
     // Uncomment this block to pass the first stage
 
     let listener = TcpListener::bind("127.0.0.1:6379").unwrap();
+    let mut store = Arc::new(Storage::new());
 
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
-                thread::spawn(|| {
-                    handle_client(stream);
+                let store_clone = store.clone();
+                thread::spawn(move || {
+                    handle_client(stream, store_clone);
                 });
             }
             Err(e) => {
@@ -28,7 +54,8 @@ fn main() {
     }
 }
 
-fn handle_client(mut stream: TcpStream) {
+fn handle_client(mut stream: TcpStream, store: Arc<Storage>) {
+    // let store_clone = store.clone();
     let mut buffer = [0; 1024];
 
     loop {
@@ -53,24 +80,43 @@ fn handle_client(mut stream: TcpStream) {
         }
 
         let command = commands.get(0).unwrap();
-        let output = commands
-            .get(1)
-            .map(|s| s.to_string()) // Convert &String to String if there is Some
-            .unwrap_or_else(|| "".to_string());
 
         let command_upper = command.to_uppercase();
 
         match command_upper.as_str() {
             "PING" => {
-                println!("PONG");
-                let response = "+PONG\r\n";
-                stream.write_all(response.as_bytes()).unwrap();
+                let output = "+PONG\r\n";
+                stream.write_all(output.as_bytes()).unwrap();
             }
             "ECHO" => {
-                println!("output {}", output);
-                let response = format!("${}\r\n{}\r\n", output.len(), output);
+                let response = commands.get(1).unwrap();
+                let output = format!("${}\r\n{}\r\n", response.len(), response);
+                stream.write_all(output.as_bytes()).unwrap();
+            }
+            "SET" => {
+                let key = commands.get(1).unwrap();
+                let value = commands
+                    .get(2)
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| "".to_string());
+
+                store.set(key.clone(), value.clone());
+
+                let response = "+OK\r\n";
                 stream.write_all(response.as_bytes()).unwrap();
             }
+            "GET" => {
+                let key = commands.get(1).unwrap();
+                let value = store.get(key).unwrap_or_default();
+
+                let mut response = format!("${}\r\n{}\r\n", value.len(), value);
+
+                if value.len() == 0 {
+                    response = "$-1\r\n".to_string();
+                }
+                stream.write_all(response.as_bytes()).unwrap();
+            }
+
             _ => {
                 println!("Something else is found ");
             }
