@@ -14,9 +14,8 @@ fn main() {
 
     for stream in listener.incoming() {
         match stream {
-            Ok(mut stream) => {
-                let response  = "+PONG\r\n";
-                stream.write(response.as_bytes()).unwrap();
+            Ok( stream) => {
+                 handle_client(stream);
             }
             Err(e) => {
                 println!("error: {}", e);
@@ -25,20 +24,33 @@ fn main() {
     }
 }
 
-// fn handle_client(mut stream:TcpStream){
-//     println!("hello world");
-//     let buf_reader = BufReader::new(&mut stream);
+fn handle_client(mut stream:TcpStream){
+    let mut buffer = [0;1024];
+
+    loop {
+        let read_count = stream.read(&mut buffer).unwrap();
+        if read_count == 0 {
+            break;
+        }
+
+        stream.write_all("+PONG\r\n".as_bytes());
+    }
+}
+
+// let buf_reader = BufReader::new(&mut stream);
+
+// for line_result in buf_reader.lines() {
+//     let line = line_result.unwrap();
 //
-//     for line_result in buf_reader.lines() {
-//         let line = line_result.unwrap();
-//
-//         println!("line {}", line);
-//         if line == "PING"{
-//             let response = "+PONG\r\n";
-//             stream.write_all(response.as_bytes()).unwrap();
-//         }
-//         else{
-//             break;
-//         }
+//     println!("line {}", line);
+//     if line == "PING"{
+//         let response = "+PONG\r\n";
+//         println!("PING is received");
+//         //
+//         continue;
+//     }
+//     else{
+//         // break;
+//         continue;
 //     }
 // }
