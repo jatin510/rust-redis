@@ -1,6 +1,8 @@
+use chrono::{DateTime, Duration, Utc};
 use std::collections::HashMap;
 use std::str::from_utf8;
 use std::sync::{Arc, Mutex};
+use std::thread::yield_now;
 use std::{
     io::{prelude::*, BufReader},
     net::{TcpListener, TcpStream},
@@ -8,8 +10,15 @@ use std::{
 };
 // Uncomment this block to pass the first stage
 
+#[derive(Clone, Debug)]
+pub struct RedisData {
+    data: String,
+    expiry_time: DateTime<Utc>,
+    should_expire: bool,
+}
+
 pub struct Storage {
-    data: Arc<Mutex<HashMap<String, String>>>,
+    data: Arc<Mutex<HashMap<String, RedisData>>>,
 }
 
 impl Storage {
@@ -20,13 +29,41 @@ impl Storage {
     }
 
     pub fn get(&self, key: &str) -> Option<String> {
-        let data = self.data.lock().unwrap();
-        data.get(key).cloned()
+        let mut data = self.data.lock().unwrap();
+        if let Some(redis_data) = data.get(key) {
+            if redis_data.should_expire && Utc::now() > redis_data.expiry_time {
+                data.remove(key);
+                None
+            } else {
+                Some(redis_data.data.clone())
+            }
+        } else {
+            None
+        }
     }
 
     pub fn set(&self, key: String, value: String) {
         let mut data = self.data.lock().unwrap();
-        data.insert(key, value);
+
+        let redis_data = RedisData {
+            data: value,
+            expiry_time: Utc::now(),
+            should_expire: false,
+        };
+
+        data.insert(key, redis_data);
+    }
+
+    pub fn set_with_expire(&self, key: String, value: String, expire_after_ms: String) {
+        let mut data = self.data.lock().unwrap();
+
+        let redis_data = RedisData {
+            data: value,
+            expiry_time: Utc::now() + Duration::milliseconds(expire_after_ms.parse().unwrap()),
+            should_expire: true,
+        };
+
+        data.insert(key.clone(), redis_data.clone());
     }
 }
 
@@ -95,12 +132,18 @@ fn handle_client(mut stream: TcpStream, store: Arc<Storage>) {
             }
             "SET" => {
                 let key = commands.get(1).unwrap();
-                let value = commands
+                let mut value = commands
                     .get(2)
                     .map(|s| s.to_string())
                     .unwrap_or_else(|| "".to_string());
 
-                store.set(key.clone(), value.clone());
+                if let Some(expire_command) = commands.get(3) {
+                    let expire_time = commands.get(4).unwrap();
+
+                    store.set_with_expire(key.clone(), value.clone(), expire_time.clone());
+                } else {
+                    store.set(key.clone(), value.clone());
+                }
 
                 let response = "+OK\r\n";
                 stream.write_all(response.as_bytes()).unwrap();
