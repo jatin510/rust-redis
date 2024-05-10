@@ -13,8 +13,7 @@ use std::{
 #[derive(Clone, Debug)]
 pub struct RedisData {
     data: String,
-    expiry_time: DateTime<Utc>,
-    should_expire: bool,
+    expiry_time: Option<DateTime<Utc>>,
 }
 
 pub struct Storage {
@@ -31,9 +30,12 @@ impl Storage {
     pub fn get(&self, key: &str) -> Option<String> {
         let mut data = self.data.lock().unwrap();
         if let Some(redis_data) = data.get(key) {
-            if redis_data.should_expire && Utc::now() > redis_data.expiry_time {
-                data.remove(key);
-                None
+            if let Some(expiry_time) = redis_data.expiry_time {
+                if expiry_time < Utc::now() {
+                    data.remove(key);
+                    return None;
+                }
+                Some(redis_data.data.clone())
             } else {
                 Some(redis_data.data.clone())
             }
@@ -42,28 +44,19 @@ impl Storage {
         }
     }
 
-    pub fn set(&self, key: String, value: String) {
+    pub fn set(&self, key: String, value: String, expire_after_ms: Option<String>) {
         let mut data = self.data.lock().unwrap();
+
+        let expiry_time = expire_after_ms
+            .and_then(|ms_str| ms_str.parse::<i64>().ok())
+            .map(|ms| Utc::now() + Duration::milliseconds(ms));
 
         let redis_data = RedisData {
             data: value,
-            expiry_time: Utc::now(),
-            should_expire: false,
+            expiry_time,
         };
 
         data.insert(key, redis_data);
-    }
-
-    pub fn set_with_expire(&self, key: String, value: String, expire_after_ms: String) {
-        let mut data = self.data.lock().unwrap();
-
-        let redis_data = RedisData {
-            data: value,
-            expiry_time: Utc::now() + Duration::milliseconds(expire_after_ms.parse().unwrap()),
-            should_expire: true,
-        };
-
-        data.insert(key.clone(), redis_data.clone());
     }
 }
 
@@ -138,11 +131,11 @@ fn handle_client(mut stream: TcpStream, store: Arc<Storage>) {
                     .unwrap_or_else(|| "".to_string());
 
                 if let Some(expire_command) = commands.get(3) {
-                    let expire_time = commands.get(4).unwrap();
+                    let expire_time_in_ms = commands.get(4).unwrap();
 
-                    store.set_with_expire(key.clone(), value.clone(), expire_time.clone());
+                    store.set(key.clone(), value.clone(), Some(expire_time_in_ms.clone()))
                 } else {
-                    store.set(key.clone(), value.clone());
+                    store.set(key.clone(), value.clone(), None);
                 }
 
                 let response = "+OK\r\n";
