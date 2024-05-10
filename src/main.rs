@@ -1,5 +1,6 @@
 use chrono::{DateTime, Duration, Utc};
 use std::collections::HashMap;
+use std::env;
 use std::str::from_utf8;
 use std::sync::{Arc, Mutex};
 use std::thread::yield_now;
@@ -64,9 +65,15 @@ fn main() {
     // You can use print statements as follows for debugging, they'll be visible when running tests.
     println!("Logs from your program will appear here!");
 
-    // Uncomment this block to pass the first stage
+    let mut port = "6379";
+    let binding = env::args().collect::<Vec<_>>();
+    if let Some(port_str) = binding.get(2) {
+        port = port_str
+    } else {
+    }
 
-    let listener = TcpListener::bind("127.0.0.1:6379").unwrap();
+    let addr = format!("127.0.0.1:{}", port);
+    let listener = TcpListener::bind(addr).unwrap();
     let mut store = Arc::new(Storage::new());
 
     for stream in listener.incoming() {
