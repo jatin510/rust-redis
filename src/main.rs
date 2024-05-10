@@ -160,6 +160,11 @@ fn handle_client(mut stream: TcpStream, store: Arc<Storage>) {
                 stream.write_all(response.as_bytes()).unwrap();
             }
 
+            "INFO" => {
+                let response = "$11\r\nrole:master\r\n".to_string();
+                stream.write(response.as_bytes()).unwrap();
+            }
+
             _ => {
                 println!("Something else is found ");
             }
