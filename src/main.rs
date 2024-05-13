@@ -165,11 +165,14 @@ fn handle_client(mut stream: TcpStream, store: Arc<Storage>, is_master: bool) {
             }
 
             "INFO" => {
-                let mut response = "$11\r\nrole:master\r\n".to_string();
+                let mut response = "$87\r\nrole:master:".to_string();
 
                 if !is_master {
-                    response = "$10\r\nrole:slave\r\n".to_string();
+                    response = "$86\r\nrole:slave:".to_string();
                 }
+
+                response.push_str("master_replid:8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb:");
+                response.push_str("master_repl_offset:0\r\n");
 
                 stream.write(response.as_bytes()).unwrap();
             }
