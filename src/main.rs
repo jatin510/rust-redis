@@ -1,9 +1,9 @@
 use chrono::{DateTime, Duration, Utc};
+use clap::Parser;
 use std::collections::HashMap;
 use std::env;
 use std::str::from_utf8;
 use std::sync::{Arc, Mutex};
-use std::thread::yield_now;
 use std::{
     io::{prelude::*, BufReader},
     net::{TcpListener, TcpStream},
@@ -61,18 +61,23 @@ impl Storage {
     }
 }
 
+#[derive(Parser, Debug, Clone)]
+#[command(version, about, long_about = None)]
+struct Args {
+    #[arg(short, long, default_value_t = 6379)]
+    port: u16,
+    #[arg(short, long)]
+    replicaof: Option<Vec<String>>,
+}
+
 fn main() {
     // You can use print statements as follows for debugging, they'll be visible when running tests.
     println!("Logs from your program will appear here!");
+    let cmd_args = Arc::new(Args::parse());
 
-    let mut port = "6379";
-    let binding = env::args().collect::<Vec<_>>();
-    if let Some(port_str) = binding.get(2) {
-        port = port_str
-    } else {
-    }
+    let addr = format!("127.0.0.1:{}", cmd_args.port);
+    let is_master = cmd_args.replicaof.is_none();
 
-    let addr = format!("127.0.0.1:{}", port);
     let listener = TcpListener::bind(addr).unwrap();
     let mut store = Arc::new(Storage::new());
 
@@ -81,7 +86,7 @@ fn main() {
             Ok(stream) => {
                 let store_clone = store.clone();
                 thread::spawn(move || {
-                    handle_client(stream, store_clone);
+                    handle_client(stream, store_clone, is_master);
                 });
             }
             Err(e) => {
@@ -91,14 +96,13 @@ fn main() {
     }
 }
 
-fn handle_client(mut stream: TcpStream, store: Arc<Storage>) {
+fn handle_client(mut stream: TcpStream, store: Arc<Storage>, is_master: bool) {
     // let store_clone = store.clone();
     let mut buffer = [0; 1024];
 
     loop {
         let read_count = stream.read(&mut buffer).unwrap();
         let mut text = from_utf8(&buffer).unwrap();
-
         if read_count == 0 {
             break;
         }
@@ -161,7 +165,12 @@ fn handle_client(mut stream: TcpStream, store: Arc<Storage>) {
             }
 
             "INFO" => {
-                let response = "$11\r\nrole:master\r\n".to_string();
+                let mut response = "$11\r\nrole:master\r\n".to_string();
+
+                if !is_master {
+                    response = "$10\r\nrole:slave\r\n".to_string();
+                }
+
                 stream.write(response.as_bytes()).unwrap();
             }
 
