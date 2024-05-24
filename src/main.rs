@@ -31,6 +31,25 @@ fn main() {
     let listener = TcpListener::bind(addr).unwrap();
     let store = Arc::new(Storage::new());
 
+    if let Some(replica) = &cmd_args.replicaof {
+        let replicaof = replica.get(0).unwrap();
+        let replicaof = replicaof.split(" ").collect::<Vec<&str>>();
+        let replicaof_addr = format!("{}:{}", replicaof[0], replicaof[1]);
+        let replicaof_addr = replicaof_addr.to_string();
+
+        let mut connection = match TcpStream::connect(replicaof_addr) {
+            Ok(connection) => connection,
+            Err(e) => {
+                println!("Error connecting to master {:?}", e);
+                return;
+            }
+        };
+
+        connection
+            .write_all("*1\r\n$4\r\nPING\r\n".as_bytes())
+            .expect("Error writing to master");
+    }
+
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
