@@ -1,13 +1,10 @@
 mod storage;
 
-use chrono::{DateTime, Duration, Utc};
 use clap::Parser;
-use std::collections::HashMap;
-use std::env;
 use std::str::from_utf8;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::{
-    io::{prelude::*, BufReader},
+    io::prelude::*,
     net::{TcpListener, TcpStream},
     thread,
 };
@@ -32,7 +29,7 @@ fn main() {
     let is_master = cmd_args.replicaof.is_none();
 
     let listener = TcpListener::bind(addr).unwrap();
-    let mut store = Arc::new(Storage::new());
+    let store = Arc::new(Storage::new());
 
     for stream in listener.incoming() {
         match stream {
@@ -58,16 +55,14 @@ pub enum RedisCommand {
     Info,
 }
 
-struct RedisMessage {}
-
 fn handle_client(mut stream: TcpStream, store: Arc<Storage>, is_master: bool) {
     // let store_clone = store.clone();
     let mut buffer = [0; 1024];
 
     loop {
         let read_count = stream.read(&mut buffer).unwrap();
-        let mut text = from_utf8(&buffer).unwrap();
-        let mut text = text.trim_matches('\0');
+        let text = from_utf8(&buffer).unwrap();
+        let text = text.trim_matches('\0');
         if read_count == 0 {
             break;
         }
@@ -125,9 +120,6 @@ fn handle_client(mut stream: TcpStream, store: Arc<Storage>, is_master: bool) {
 
                 stream.write_all(response.as_bytes()).unwrap();
             }
-            _ => {
-                println!("Something else is found ");
-            }
         }
     }
 }
@@ -138,7 +130,7 @@ fn parse_input_commands(commands: &[String]) -> Vec<RedisCommand> {
 
     while let Some(command) = iter.next() {
         // let mut command_iter = command.lines();
-        let mut command_iter_vector: Vec<_> = command.lines().collect();
+        let command_iter_vector: Vec<_> = command.lines().collect();
         let command_upper = command_iter_vector.get(2).unwrap().to_uppercase();
 
         match command_upper.as_str() {
