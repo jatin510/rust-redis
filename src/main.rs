@@ -55,6 +55,7 @@ pub enum RedisCommand {
     Echo(String),
     Set(String, String, Option<String>),
     Get(String),
+    Info,
 }
 
 struct RedisMessage {}
@@ -110,72 +111,24 @@ fn handle_client(mut stream: TcpStream, store: Arc<Storage>, is_master: bool) {
                 }
                 stream.write_all(response.as_bytes()).unwrap();
             }
+
+            RedisCommand::Info => {
+                println!("Info command is found");
+                let mut response = "$87\r\nrole:master:".to_string();
+
+                if !is_master {
+                    response = "$86\r\nrole:slave:".to_string();
+                }
+
+                response.push_str("master_replid:8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb:");
+                response.push_str("master_repl_offset:0\r\n");
+
+                stream.write_all(response.as_bytes()).unwrap();
+            }
             _ => {
                 println!("Something else is found ");
             }
         }
-
-        // let command = commands.get(0).unwrap();
-        //
-        // let command_upper = command.to_uppercase();
-        //
-        // match command_upper.as_str() {
-        //     "PING" => {
-        //         let output = "+PONG\r\n";
-        //         stream.write_all(output.as_bytes()).unwrap();
-        //     }
-        //     "ECHO" => {
-        //         let response = commands.get(1).unwrap();
-        //         let output = format!("${}\r\n{}\r\n", response.len(), response);
-        //         stream.write_all(output.as_bytes()).unwrap();
-        //     }
-        //     "SET" => {
-        //         let key = commands.get(1).unwrap();
-        //         let mut value = commands
-        //             .get(2)
-        //             .map(|s| s.to_string())
-        //             .unwrap_or_else(|| "".to_string());
-        //
-        //         if let Some(expire_command) = commands.get(3) {
-        //             let expire_time_in_ms = commands.get(4).unwrap();
-        //
-        //             store.set(key.clone(), value.clone(), Some(expire_time_in_ms.clone()))
-        //         } else {
-        //             store.set(key.clone(), value.clone(), None);
-        //         }
-        //
-        //         let response = "+OK\r\n";
-        //         stream.write_all(response.as_bytes()).unwrap();
-        //     }
-        //     "GET" => {
-        //         let key = commands.get(4).unwrap();
-        //         let value = store.get(key).unwrap_or_default();
-        //
-        //         let mut response = format!("${}\r\n{}\r\n", value.len(), value);
-        //
-        //         if value.len() == 0 {
-        //             response = "$-1\r\n".to_string();
-        //         }
-        //         stream.write_all(response.as_bytes()).unwrap();
-        //     }
-        //
-        //     "INFO" => {
-        //         let mut response = "$87\r\nrole:master:".to_string();
-        //
-        //         if !is_master {
-        //             response = "$86\r\nrole:slave:".to_string();
-        //         }
-        //
-        //         response.push_str("master_replid:8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb:");
-        //         response.push_str("master_repl_offset:0\r\n");
-        //
-        //         stream.write(response.as_bytes()).unwrap();
-        //     }
-        //
-        //     _ => {
-        //         println!("Something else is found ");
-        //     }
-        // }
     }
 }
 
@@ -211,6 +164,8 @@ fn parse_input_commands(commands: &[String]) -> Vec<RedisCommand> {
                 let key = command_iter_vector.get(4).unwrap();
                 parsed_commands.push(RedisCommand::Get(key.to_string()));
             }
+
+            "INFO" => parsed_commands.push(RedisCommand::Info),
             _ => {
                 println!("Unknown command is found {:?}", command_upper);
             }
